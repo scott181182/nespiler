@@ -371,3 +371,24 @@ pub enum Opcode {
         
 //     }
 // }
+
+
+// const OPCODE_MAP: [Opcode; 256] = [
+//     Opcode::BRK, Opcode::ORA, Opcode::STP, Opcode::SLO, Opcode::NOP, Opcode::ORA, Opcode::ASL, Opcode::SLO, Opcode::PHP, Opcode::ORA, Opcode::ASL, Opcode::ANC, Opcode::NOP, Opcode::ORA, Opcode::ASL, Opcode::SLO, 
+//     Opcode::BPL, Opcode::ORA, Opcode::STP, Opcode::SLO, Opcode::NOP, Opcode::ORA, Opcode::ASL, Opcode::SLO, Opcode::CLC, Opcode::ORA, Opcode::NOP, Opcode::SLO, Opcode::NOP, Opcode::ORA, Opcode::ASL, Opcode::SLO, 
+//     Opcode::JSR, Opcode::AND, Opcode::STP, Opcode::RLA, Opcode::BIT, Opcode::AND, Opcode::ROL, Opcode::RLA, Opcode::PLP, Opcode::AND, Opcode::ROL, Opcode::ANC, Opcode::BIT, Opcode::AND, Opcode::ROL, Opcode::RLA, 
+//     Opcode::BMI, Opcode::AND, Opcode::STP, Opcode::RLA, Opcode::NOP, Opcode::AND, Opcode::ROL, Opcode::RLA, Opcode::SEC, Opcode::AND, Opcode::NOP, Opcode::RLA, Opcode::NOP, Opcode::AND, Opcode::ROL, Opcode::RLA, 
+//     Opcode::RTI, Opcode::EOR, Opcode::STP, Opcode::SRE, Opcode::NOP, Opcode::EOR, Opcode::LSR, Opcode::SRE, Opcode::PHA, Opcode::EOR, Opcode::LSR, Opcode::ALR, Opcode::JMP, Opcode::EOR, Opcode::LSR, Opcode::SRE, 
+//     Opcode::BVC, Opcode::EOR, Opcode::STP, Opcode::SRE, Opcode::NOP, Opcode::EOR, Opcode::LSR, Opcode::SRE, Opcode::CLI, Opcode::EOR, Opcode::NOP, Opcode::SRE, Opcode::NOP, Opcode::EOR, Opcode::LSR, Opcode::SRE, 
+//     Opcode::RTS, Opcode::ADC, Opcode::STP, Opcode::RRA, Opcode::NOP, Opcode::ADC, Opcode::ROR, Opcode::RRA, Opcode::PLA, Opcode::ADC, Opcode::ROR, Opcode::ARR, Opcode::JMP, Opcode::ADC, Opcode::ROR, Opcode::RRA, 
+//     Opcode::BVS, Opcode::ADC, Opcode::STP, Opcode::RRA, Opcode::NOP, Opcode::ADC, Opcode::ROR, Opcode::RRA, Opcode::SEI, Opcode::ADC, Opcode::NOP, Opcode::RRA, Opcode::NOP, Opcode::ADC, Opcode::ROR, Opcode::RRA, 
+
+//     Opcode::NOP, Opcode::STA, Opcode::NOP, Opcode::SAX, Opcode::STY, Opcode::STA, Opcode::STX, Opcode::SAX, Opcode::DEY, Opcode::NOP, Opcode::TXA, Opcode::XAA, Opcode::STY, Opcode::STA, Opcode::STX, Opcode::SAX, 
+//     Opcode::BCC, Opcode::STA, Opcode::STP, Opcode::AHX, Opcode::STY, Opcode::STA, Opcode::STX, Opcode::SAX, Opcode::TYA, Opcode::STA, Opcode::TXS, Opcode::TAS, Opcode::SHY, Opcode::STA, Opcode::SHX, Opcode::AHX, 
+//     Opcode::LDY, Opcode::LDA, Opcode::LDX, Opcode::LAX, Opcode::LDY, Opcode::LDA, Opcode::LDX, Opcode::LAX, Opcode::TAY, Opcode::LDA, Opcode::TAX, Opcode::LAX, Opcode::LDY, Opcode::LDA, Opcode::LDX, Opcode::LAX, 
+//     Opcode::BCS, Opcode::LDA, Opcode::STP, Opcode::LAX, Opcode::LDY, Opcode::LDA, Opcode::LDX, Opcode::LAX, Opcode::CLV, Opcode::LDA, Opcode::TSX, Opcode::LAS, Opcode::LDY, Opcode::LDA, Opcode::LDX, Opcode::LAX, 
+//     Opcode::CPY, Opcode::CMP, Opcode::NOP, Opcode::DCP, Opcode::CPY, Opcode::CMP, Opcode::DEC, Opcode::DCP, Opcode::INY, Opcode::CMP, Opcode::DEX, Opcode::AXS, Opcode::CPY, Opcode::CMP, Opcode::DEC, Opcode::DCP, 
+//     Opcode::BNE, Opcode::CMP, Opcode::STP, Opcode::DCP, Opcode::NOP, Opcode::CMP, Opcode::DEC, Opcode::DCP, Opcode::CLD, Opcode::CMP, Opcode::NOP, Opcode::DCP, Opcode::NOP, Opcode::CMP, Opcode::DEC, Opcode::DCP, 
+//     Opcode::CPX, Opcode::SBC, Opcode::NOP, Opcode::ISC, Opcode::CPX, Opcode::SBC, Opcode::INC, Opcode::ISC, Opcode::INX, Opcode::SBC, Opcode::NOP, Opcode::SBC, Opcode::CPX, Opcode::SBC, Opcode::INC, Opcode::ISC, 
+//     Opcode::BEQ, Opcode::SBC, Opcode::STP, Opcode::ISC, Opcode::NOP, Opcode::SBC, Opcode::INC, Opcode::ISC, Opcode::SED, Opcode::SBC, Opcode::NOP, Opcode::ISC, Opcode::NOP, Opcode::SBC, Opcode::INC, Opcode::ISC, 
+// ];
