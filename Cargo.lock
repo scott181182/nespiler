@@ -185,6 +185,7 @@ dependencies = [
  "binrw",
  "clap",
  "modular-bitfield",
+ "nespile_macros",
  "subenum",
  "thiserror",
 ]
@@ -192,6 +193,12 @@ dependencies = [
 [[package]]
 name = "nespile_macros"
 version = "0.1.0"
+dependencies = [
+ "binrw",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.66",
+]
 
 [[package]]
 name = "owo-colors"

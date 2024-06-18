@@ -1,184 +1,58 @@
-use std::io;
+use binrw::BinRead;
 
-use binrw::{binread, BinRead};
+use nespile_macros::{parse_byte_with, OpcodeArgs, VariantNames};
 
-
-
-/// Address Modes per https://www.masswerk.at/6502/6502_instruction_set.html
-#[derive(Debug)]
-pub enum OpcodeArg {
-    /// Operand is implied Accumulator register.
-    Accumulator,
-
-    /// Absolute (16-bit) address.
-    Absolute(u16),
-
-    /// Absolute (16-bit) address, incremented by X with carry.
-    AbsoluteX(u16),
-
-    /// Absolute (16-bit) address, incremented by Y with carry.
-    AbsoluteY(u16),
-
-    /// Immediate (8-bit) value.
-    Immediate(u8),
-
-    /// Implied (empty) value.
-    Implied,
-
-    /// Absolute address, the value in memory at the given absolute address.
-    Indirect(u16),
-
-    /// Absolute address, the value in memory at the given zeropage address incremented by X (without carry).
-    IndirectX(u8),
-
-    /// Absolute address, the value in memory at the given zeropage address incremented by Y (with carry).
-    IndirectY(u8),
-
-    /// Branch target is PC plus the signed offset byte.
-    Relative(u8),
-
-    /// Zeropage (8-bit) address.
-    ZeroPage(u8),
-
-    /// Zeropage (8-bit) address, incremented by X without carry.
-    ZeroPageX(u8),
-
-    /// Zeropage (8-bit) address, incremented by Y without carry.
-    ZeroPageY(u8),
-}
-impl OpcodeArg {
-    pub fn size(&self) -> usize {
-        match self {
-            &OpcodeArg::Accumulator | &OpcodeArg::Implied =>
-                0,
-            &OpcodeArg::Immediate(_) | &OpcodeArg::IndirectX(_) |
-            &OpcodeArg::IndirectY(_) | &OpcodeArg::Relative(_) |
-            &OpcodeArg::ZeroPage(_) | &OpcodeArg::ZeroPageX(_) |
-            &OpcodeArg::ZeroPageY(_) =>
-                1,
-            &OpcodeArg::Absolute(_) | &OpcodeArg::AbsoluteX(_) |
-            &OpcodeArg::AbsoluteY(_) | &OpcodeArg::Indirect(_) => 
-                2,
-        }
-    }
-}
-impl std::fmt::Display for OpcodeArg {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            &OpcodeArg::Accumulator => write!(f, "A"),
-            &OpcodeArg::Absolute(addr) => write!(f, "${:04x}", addr),
-            &OpcodeArg::AbsoluteX(addr) => write!(f, "${:04x},X", addr),
-            &OpcodeArg::AbsoluteY(addr) => write!(f, "${:04x},Y", addr),
-            &OpcodeArg::Immediate(addr) => write!(f, "#${:02x}", addr),
-            &OpcodeArg::Implied => Ok(()),
-            &OpcodeArg::Indirect(addr) => write!(f, "(${:04x})", addr),
-            &OpcodeArg::IndirectX(addr) => write!(f, "(${:02x},X)", addr),
-            &OpcodeArg::IndirectY(addr) => write!(f, "(${:02x}),Y", addr),
-            &OpcodeArg::Relative(addr) => write!(f, "${:02x}", addr),
-            &OpcodeArg::ZeroPage(addr) => write!(f, "${:02x}", addr),
-            &OpcodeArg::ZeroPageX(addr) => write!(f, "${:02x},X", addr),
-            &OpcodeArg::ZeroPageY(addr) => write!(f, "${:02x},Y", addr),
-        }
-    }
-}
-impl BinRead for OpcodeArg {
-    // The opcode, for determining address mode.
-    type Args<'a> = u8;
-
-    /// Based on https://www.nesdev.org/wiki/CPU_unofficial_opcodes
-    fn read_options<R: io::Read + io::Seek>(
-        reader: &mut R,
-        endian: binrw::Endian,
-        args: Self::Args<'_>,
-    ) -> binrw::BinResult<Self> {
-        // Strict lower 5-bit matches (columns of the table on the NESDEV wiki).
-        match args & 0x1f {
-            0x00 =>
-                // Weird case in the middle
-                if args == 0x20 { Ok(OpcodeArg::Absolute(u16::read_options(reader, endian, ())?)) }
-                // Half the column is immediate
-                else if args & 0x80 > 0 { Ok(OpcodeArg::Immediate(u8::read_options(reader, endian, ())?)) }
-                else { Ok(OpcodeArg::Implied) },
-            0x01 | 0x03 =>
-                Ok(OpcodeArg::IndirectX(u8::read_options(reader, endian, ())?)),
-            0x02 =>
-                // Half the column is immediate
-                if args & 0x80 > 0 {
-                    Ok(OpcodeArg::Immediate(u8::read_options(reader, endian, ())?))
-                } else {
-                    Ok(OpcodeArg::Implied)
-                },
-            0x04 | 0x05 | 0x06 | 0x07 =>
-                Ok(OpcodeArg::ZeroPage(u8::read_options(reader, endian, ())?)),
-
-            0x08 | 0x0a | 0x12 | 0x18 | 0x1a =>
-                Ok(OpcodeArg::Implied),
-            0x09 | 0x0b =>
-                Ok(OpcodeArg::Immediate(u8::read_options(reader, endian, ())?)),
-            0x0c | 0x0d | 0x0e | 0x0f =>
-                // Just one exception to this block.
-                if args == 0x6c {
-                    Ok(OpcodeArg::Indirect(u16::read_options(reader, endian, ())?))
-                } else {
-                    Ok(OpcodeArg::Absolute(u16::read_options(reader, endian, ())?))
-                },
-
-            0x10 => Ok(OpcodeArg::Relative(u8::read_options(reader, endian, ())?)),
-            0x11 | 0x13 =>
-                Ok(OpcodeArg::IndirectY(u8::read_options(reader, endian, ())?)),
-            0x14 | 0x15 | 0x16 | 0x17 =>
-                // Just a little block breaking the trend.
-                if args & 0xde == 0xa6 {
-                    Ok(OpcodeArg::ZeroPageY(u8::read_options(reader, endian, ())?))
-                } else {
-                    Ok(OpcodeArg::ZeroPageX(u8::read_options(reader, endian, ())?))
-                }
-
-            0x19 | 0x1b =>
-                Ok(OpcodeArg::AbsoluteY(u16::read_options(reader, endian, ())?)),
-            0x1c | 0x1d | 0x1e | 0x1f =>
-                // Just a little block breaking the trend.
-                if args & 0xde == 0xae {
-                    Ok(OpcodeArg::AbsoluteY(u16::read_options(reader, endian, ())?))
-                } else {
-                    Ok(OpcodeArg::AbsoluteX(u16::read_options(reader, endian, ())?))
-                }
-
-            _ => unreachable!()
-        }
-    }
-}
+use crate::parser::address_mode::*;
 
 
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, VariantNames, OpcodeArgs)]
+#[parse_byte_with(
+    BRK, ORA, STP, SLO, NOP, ORA, ASL, SLO, PHP, ORA, ASL, ANC, NOP, ORA, ASL, SLO, 
+    BPL, ORA, STP, SLO, NOP, ORA, ASL, SLO, CLC, ORA, NOP, SLO, NOP, ORA, ASL, SLO, 
+    JSR, AND, STP, RLA, BIT, AND, ROL, RLA, PLP, AND, ROL, ANC, BIT, AND, ROL, RLA, 
+    BMI, AND, STP, RLA, NOP, AND, ROL, RLA, SEC, AND, NOP, RLA, NOP, AND, ROL, RLA, 
+    RTI, EOR, STP, SRE, NOP, EOR, LSR, SRE, PHA, EOR, LSR, ALR, JMP, EOR, LSR, SRE, 
+    BVC, EOR, STP, SRE, NOP, EOR, LSR, SRE, CLI, EOR, NOP, SRE, NOP, EOR, LSR, SRE, 
+    RTS, ADC, STP, RRA, NOP, ADC, ROR, RRA, PLA, ADC, ROR, ARR, JMP, ADC, ROR, RRA, 
+    BVS, ADC, STP, RRA, NOP, ADC, ROR, RRA, SEI, ADC, NOP, RRA, NOP, ADC, ROR, RRA, 
+
+    NOP, STA, NOP, SAX, STY, STA, STX, SAX, DEY, NOP, TXA, XAA, STY, STA, STX, SAX, 
+    BCC, STA, STP, AHX, STY, STA, STX, SAX, TYA, STA, TXS, TAS, SHY, STA, SHX, AHX, 
+    LDY, LDA, LDX, LAX, LDY, LDA, LDX, LAX, TAY, LDA, TAX, LXA, LDY, LDA, LDX, LAX, 
+    BCS, LDA, STP, LAX, LDY, LDA, LDX, LAX, CLV, LDA, TSX, LAS, LDY, LDA, LDX, LAX, 
+    CPY, CMP, NOP, DCP, CPY, CMP, DEC, DCP, INY, CMP, DEX, AXS, CPY, CMP, DEC, DCP, 
+    BNE, CMP, STP, DCP, NOP, CMP, DEC, DCP, CLD, CMP, NOP, DCP, NOP, CMP, DEC, DCP, 
+    CPX, SBC, NOP, ISC, CPX, SBC, INC, ISC, INX, SBC, NOP, SBC, CPX, SBC, INC, ISC, 
+    BEQ, SBC, STP, ISC, NOP, SBC, INC, ISC, SED, SBC, NOP, ISC, NOP, SBC, INC, ISC, 
+)]
 pub enum Opcode {
     /// add with carry
-    ADC,
+    ADC(AddrModeNoZeropageY),
     /// and (with accumulator)
-    AND,
+    AND(AddrModeNoZeropageY),
     /// arithmetic shift left
-    ASL,
+    ASL(AddrModeSimpleXAcc),
     /// branch on carry clear
-    BCC,
+    BCC(AddrModeRelative),
     /// branch on carry set
-    BCS,
+    BCS(AddrModeRelative),
     /// branch on equal (zero set)
-    BEQ,
+    BEQ(AddrModeRelative),
     /// bit test
-    BIT,
+    BIT(AddrModeSimple),
     /// branch on minus (negative set)
-    BMI,
+    BMI(AddrModeRelative),
     /// branch on not equal (zero clear)
-    BNE,
+    BNE(AddrModeRelative),
     /// branch on plus (negative clear)
-    BPL,
+    BPL(AddrModeRelative),
     /// break / interrupt
     BRK,
     /// branch on overflow clear
-    BVC,
+    BVC(AddrModeRelative),
     /// branch on overflow set
-    BVS,
+    BVS(AddrModeRelative),
     /// clear carry
     CLC,
     /// clear decimal
@@ -188,41 +62,41 @@ pub enum Opcode {
     /// clear overflow
     CLV,
     /// compare (with accumulator)
-    CMP,
+    CMP(AddrModeNoZeropageY),
     /// compare with X
-    CPX,
+    CPX(AddrModeSimpleOrImm),
     /// compare with Y
-    CPY,
+    CPY(AddrModeSimpleOrImm),
     /// decrement
-    DEC,
+    DEC(AddrModeSimpleX),
     /// decrement X
     DEX,
     /// decrement Y
     DEY,
     /// exclusive or (with accumulator)
-    EOR,
+    EOR(AddrModeNoZeropageY),
     /// increment
-    INC,
+    INC(AddrModeSimpleX),
     /// increment X
     INX,
     /// increment Y
     INY,
     /// jump
-    JMP,
+    JMP(AddrModeAbsInd),
     /// jump subroutine
-    JSR,
+    JSR(AddrModeAbs),
     /// load accumulator
-    LDA,
+    LDA(AddrModeNoZeropageY),
     /// load X
-    LDX,
+    LDX(AddrModeSimpleYImm),
     /// load Y
-    LDY,
+    LDY(AddrModeSimpleXImm),
     /// logical shift right
-    LSR,
+    LSR(AddrModeSimpleXAcc),
     /// no operation
     NOP,
     /// or with accumulator
-    ORA,
+    ORA(AddrModeNoZeropageY),
     /// push accumulator
     PHA,
     /// push processor status (SR)
@@ -232,15 +106,15 @@ pub enum Opcode {
     /// pull processor status (SR)
     PLP,
     /// rotate left
-    ROL,
+    ROL(AddrModeSimpleXAcc),
     /// rotate right
-    ROR,
+    ROR(AddrModeSimpleXAcc),
     /// return from interrupt
     RTI,
     /// return from subroutine
     RTS,
     /// subtract with carry
-    SBC,
+    SBC(AddrModeNoZeropageY),
     /// set carry
     SEC,
     /// set decimal
@@ -248,11 +122,11 @@ pub enum Opcode {
     /// set interrupt disable
     SEI,
     /// store accumulator
-    STA,
+    STA(AddrModeNoZeropageYNoImm),
     /// store X
-    STX,
+    STX(AddrModeSTX),
     /// store Y
-    STY,
+    STY(AddrModeSTY),
     /// transfer accumulator to X
     TAX,
     /// transfer accumulator to Y
@@ -273,100 +147,69 @@ pub enum Opcode {
     /// a.k.a SHA or AXA
     /// 
     /// Stores A AND X AND (high-byte of addr. + 1) at addr. 
-    AHX,
+    AHX(AddrModeAHX),
     /// ALR = AND + LSR
-    ALR,
+    ALR(AddrModeImmediate),
     /// ANC = AND, bit(7) -> Carry
-    ANC,
+    ANC(AddrModeImmediate),
     /// ARR = AND + ROR
-    ARR,
+    ARR(AddrModeImmediate),
     /// a.k.a SBX or SAX
     /// 
     /// CMP and DEX at once, sets flags like CMP
-    AXS,
+    AXS(AddrModeImmediate),
     /// DCP = DEC + CMP
-    DCP,
+    DCP(AddrModeNoZeropageYNoImm),
     /// ISC = INC + SBC
-    ISC,
+    ISC(AddrModeNoZeropageYNoImm),
     /// LSA/TSX oper
     /// 
     /// M AND SP -> A, X, SP
-    LAS,
-    /// LAZ = LDA + LDX
-    LAX,
+    LAS(AddrModeAbsY),
+    /// LAX = LDA + LDX
+    LAX(AddrModeLAX),
+    /// (A OR CONST) AND oper -> A -> X
+    LXA(AddrModeImmediate),
     /// RLA = ROL + AND
-    RLA,
+    RLA(AddrModeNoZeropageYNoImm),
     /// RRA = ROR + ADC
-    RRA,
-    /// a.k.a. SBX, AXS
+    RRA(AddrModeNoZeropageYNoImm),
+    /// a.k.a. AXS, AAX
     /// 
-    /// (A AND X) - oper -> X
-    SAX,
+    /// A AND X -> M
+    SAX(AddrModeSAX),
     /// a.k.a A11, SXA, XAS
     /// 
     /// Stores X AND (high-byte of addr. + 1) at addr.
-    SHX,
+    SHX(AddrModeAbsY),
     /// a.k.a A11, SYA, SAY
     /// 
     /// Stores Y AND (high-byte of addr. + 1) at addr.
-    SHY,
+    SHY(AddrModeAbsX),
     /// SLO = ASL + ORA
-    SLO,
+    SLO(AddrModeNoZeropageYNoImm),
     /// SRE = LSR + EOR
-    SRE,
+    SRE(AddrModeNoZeropageYNoImm),
     /// Puts A AND X in SP and stores A AND X AND (high-byte of addr. + 1) at addr.
-    TAS,
+    TAS(AddrModeAbsY),
     /// a.k.a ANE
     /// 
     /// `(A OR CONST) AND X AND oper -> A`
-    XAA,
+    XAA(AddrModeImmediate),
 
 
     /// NES Stop (?)
     STP,
 }
 
-const OPCODE_MAP: [Opcode; 256] = [
-    Opcode::BRK, Opcode::ORA, Opcode::STP, Opcode::SLO, Opcode::NOP, Opcode::ORA, Opcode::ASL, Opcode::SLO, Opcode::PHP, Opcode::ORA, Opcode::ASL, Opcode::ANC, Opcode::NOP, Opcode::ORA, Opcode::ASL, Opcode::SLO, 
-    Opcode::BPL, Opcode::ORA, Opcode::STP, Opcode::SLO, Opcode::NOP, Opcode::ORA, Opcode::ASL, Opcode::SLO, Opcode::CLC, Opcode::ORA, Opcode::NOP, Opcode::SLO, Opcode::NOP, Opcode::ORA, Opcode::ASL, Opcode::SLO, 
-    Opcode::JSR, Opcode::AND, Opcode::STP, Opcode::RLA, Opcode::BIT, Opcode::AND, Opcode::ROL, Opcode::RLA, Opcode::PLP, Opcode::AND, Opcode::ROL, Opcode::ANC, Opcode::BIT, Opcode::AND, Opcode::ROL, Opcode::RLA, 
-    Opcode::BMI, Opcode::AND, Opcode::STP, Opcode::RLA, Opcode::NOP, Opcode::AND, Opcode::ROL, Opcode::RLA, Opcode::SEC, Opcode::AND, Opcode::NOP, Opcode::RLA, Opcode::NOP, Opcode::AND, Opcode::ROL, Opcode::RLA, 
-    Opcode::RTI, Opcode::EOR, Opcode::STP, Opcode::SRE, Opcode::NOP, Opcode::EOR, Opcode::LSR, Opcode::SRE, Opcode::PHA, Opcode::EOR, Opcode::LSR, Opcode::ALR, Opcode::JMP, Opcode::EOR, Opcode::LSR, Opcode::SRE, 
-    Opcode::BVC, Opcode::EOR, Opcode::STP, Opcode::SRE, Opcode::NOP, Opcode::EOR, Opcode::LSR, Opcode::SRE, Opcode::CLI, Opcode::EOR, Opcode::NOP, Opcode::SRE, Opcode::NOP, Opcode::EOR, Opcode::LSR, Opcode::SRE, 
-    Opcode::RTS, Opcode::ADC, Opcode::STP, Opcode::RRA, Opcode::NOP, Opcode::ADC, Opcode::ROR, Opcode::RRA, Opcode::PLA, Opcode::ADC, Opcode::ROR, Opcode::ARR, Opcode::JMP, Opcode::ADC, Opcode::ROR, Opcode::RRA, 
-    Opcode::BVS, Opcode::ADC, Opcode::STP, Opcode::RRA, Opcode::NOP, Opcode::ADC, Opcode::ROR, Opcode::RRA, Opcode::SEI, Opcode::ADC, Opcode::NOP, Opcode::RRA, Opcode::NOP, Opcode::ADC, Opcode::ROR, Opcode::RRA, 
-
-    Opcode::NOP, Opcode::STA, Opcode::NOP, Opcode::SAX, Opcode::STY, Opcode::STA, Opcode::STX, Opcode::SAX, Opcode::DEY, Opcode::NOP, Opcode::TXA, Opcode::XAA, Opcode::STY, Opcode::STA, Opcode::STX, Opcode::SAX, 
-    Opcode::BCC, Opcode::STA, Opcode::STP, Opcode::AHX, Opcode::STY, Opcode::STA, Opcode::STX, Opcode::SAX, Opcode::TYA, Opcode::STA, Opcode::TXS, Opcode::TAS, Opcode::SHY, Opcode::STA, Opcode::SHX, Opcode::AHX, 
-    Opcode::LDY, Opcode::LDA, Opcode::LDX, Opcode::LAX, Opcode::LDY, Opcode::LDA, Opcode::LDX, Opcode::LAX, Opcode::TAY, Opcode::LDA, Opcode::TAX, Opcode::LAX, Opcode::LDY, Opcode::LDA, Opcode::LDX, Opcode::LAX, 
-    Opcode::BCS, Opcode::LDA, Opcode::STP, Opcode::LAX, Opcode::LDY, Opcode::LDA, Opcode::LDX, Opcode::LAX, Opcode::CLV, Opcode::LDA, Opcode::TSX, Opcode::LAS, Opcode::LDY, Opcode::LDA, Opcode::LDX, Opcode::LAX, 
-    Opcode::CPY, Opcode::CMP, Opcode::NOP, Opcode::DCP, Opcode::CPY, Opcode::CMP, Opcode::DEC, Opcode::DCP, Opcode::INY, Opcode::CMP, Opcode::DEX, Opcode::AXS, Opcode::CPY, Opcode::CMP, Opcode::DEC, Opcode::DCP, 
-    Opcode::BNE, Opcode::CMP, Opcode::STP, Opcode::DCP, Opcode::NOP, Opcode::CMP, Opcode::DEC, Opcode::DCP, Opcode::CLD, Opcode::CMP, Opcode::NOP, Opcode::DCP, Opcode::NOP, Opcode::CMP, Opcode::DEC, Opcode::DCP, 
-    Opcode::CPX, Opcode::SBC, Opcode::NOP, Opcode::ISC, Opcode::CPX, Opcode::SBC, Opcode::INC, Opcode::ISC, Opcode::INX, Opcode::SBC, Opcode::NOP, Opcode::SBC, Opcode::CPX, Opcode::SBC, Opcode::INC, Opcode::ISC, 
-    Opcode::BEQ, Opcode::SBC, Opcode::STP, Opcode::ISC, Opcode::NOP, Opcode::SBC, Opcode::INC, Opcode::ISC, Opcode::SED, Opcode::SBC, Opcode::NOP, Opcode::ISC, Opcode::NOP, Opcode::SBC, Opcode::INC, Opcode::ISC, 
-];
-
-impl From<u8> for Opcode {
-    fn from(value: u8) -> Self {
-        OPCODE_MAP[value as usize]
-    }
-}
 
 
-
-#[binread]
-#[derive(Debug)]
-#[br(little)]
-pub struct Operation {
-    raw_opcode: u8,
-
-    #[br(calc = Opcode::from(raw_opcode))]
-    pub opcode: Opcode,
-    #[br(args_raw = raw_opcode)]
-    pub arguments: OpcodeArg
-}
-impl Operation {
+impl Opcode {
     pub fn to_source_string(&self) -> String {
-        format!("{:?}   {}", self.opcode, self.arguments)
+        if let Some(addr_mode) = self.argument() {
+            format!("{:?}   {}", self.variant_name(), addr_mode)
+        } else {
+            format!("{:?}", self.variant_name())
+        }
     }
 }

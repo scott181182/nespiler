@@ -3,7 +3,7 @@ use std::io::Cursor;
 use binrw::{BinRead, Error as BinError};
 use thiserror::Error;
 
-use opcodes::Operation;
+use opcodes::Opcode;
 use rom::NesFile;
 
 
@@ -21,7 +21,7 @@ pub enum ProgramParseError {
 }
 
 pub struct NesProgram {
-    pub operations: Vec<Operation>
+    pub operations: Vec<Opcode>
 }
 impl TryFrom<&NesFile> for NesProgram {
     type Error = ProgramParseError;
@@ -33,7 +33,7 @@ impl TryFrom<&NesFile> for NesProgram {
 
         let mut operations = Vec::new();
         while cursor.position() < size {
-            operations.push(Operation::read(&mut cursor)?)
+            operations.push(Opcode::read_options(&mut cursor, binrw::Endian::Little, ())?)
         }
 
         Ok(NesProgram{ operations })
@@ -48,7 +48,12 @@ impl NesProgram {
         self.operations.iter()
             .map(|op| {
                 let line = format!("${:0width$x}    {}", addr, op.to_source_string(), width = address_width);
-                addr += 1 + op.arguments.size();
+
+                addr += if let Some(addr_mode) = op.argument() {
+                    1 + addr_mode.size()
+                } else {
+                    1
+                };
                 return line;
             })
             .collect::<Vec<String>>()
