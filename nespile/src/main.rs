@@ -6,6 +6,7 @@ use parser::NesProgram;
 
 
 mod parser;
+mod tracer;
 
 
 #[derive(Parser, Debug)]
