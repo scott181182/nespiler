@@ -17,4 +17,8 @@ impl NesMemory {
         let hb = self.inner[(address + 1) as usize] as u16;
         (hb << 8) | lb
     }
+    pub fn write_word_at(&mut self, address: u16, value: u16) -> () {
+        self.inner[address as usize] = (value & 0xff) as u8;
+        self.inner[(address + 1) as usize] = (value >> 8) as u8;
+    }
 }
