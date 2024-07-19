@@ -1,115 +1,129 @@
-use std::{cmp::Ordering, collections::BTreeSet, ops::Add};
+use std::{collections::BTreeMap, io::{Cursor, Read}, rc::Rc};
+
+use binrw::{BinRead, Endian, Error as BinError};
+use range_set::RangeSet;
+use thiserror::Error;
+
+use crate::parser::opcodes::Opcode;
 
 
 
-#[derive(PartialEq, PartialOrd, Eq, Ord)]
-pub struct RangeSetItem<T>
-    where T: Ord + Add<T, Output = T> + Copy
-{
-    left: T,
-    length: T,
+mod opcodes;
+mod range_set;
+
+const PRGROM_OFFSET: u16 = 0x8000;
+
+
+
+#[derive(Clone)]
+pub struct TraceState {
+    a: RangeSet<u8>,
+    x: RangeSet<u8>,
+    y: RangeSet<u8>,
 }
-impl<T> RangeSetItem<T>
-    where T: Ord + Add<T, Output = T> + Copy
-{
-    pub fn new(left: T, length: T) -> Self {
-        RangeSetItem { left, length }
-    }
-
-    pub fn contains(&self, other: &T) -> bool {
-        return *other >= self.left && *other < self.left + self.length;
-    }
-
-    /// Assumes the range set items _don't_ intersect.
-    pub fn adjacent(&self, other: &Self) -> bool {
-        if self.left < other.left {
-            // Check left-to-right adjacency
-            self.left + self.length == other.left
-        } else { 
-            other.left + other.length == self.left
-        }
-    }
-    /// Assumes the range set items are adjacent.
-    pub fn merge(self, other: Self) -> Self {
-        if self.left < other.left {
-            RangeSetItem{ left: self.left, length: self.length + other.length }
-        } else {
-            RangeSetItem{ left: other.left, length: other.length + self.length }
-        }
-    }
-}
-
-
-
-pub struct RangeSet<T>
-    where T: Ord + Add<T, Output = T> + Copy
-{
-    inner: Vec<RangeSetItem<T>>,
-}
-impl<T: Ord + Add<T, Output = T> + Copy> RangeSet<T> {
+impl TraceState {
     pub fn new() -> Self {
-        RangeSet { inner: Vec::new() }
-    }
-
-    fn search_ranges(&self, other: &T) -> Result<usize, usize> {
-        self.inner.binary_search_by(|item| {
-            if other < &item.left {
-                Ordering::Less
-            } else {
-                let right = item.left + item.length;
-                if other >= &right { Ordering::Greater }
-                else { Ordering::Equal }
-            }
-        })
-    }
-
-    pub fn contains(&self, other: &T) -> bool {
-        self.search_ranges(other).is_ok()
-    }
-}
-// Could make this generic across some multiplicative identity trait, but didn't want to add the `num` crate.
-impl RangeSet<u16> {
-    pub fn insert(&mut self, other: u16) -> bool {
-        if self.inner.is_empty() {
-            self.inner.push(RangeSetItem::new(other, 1));
-            return true;
-        }
-        if let Err(idx) = self.search_ranges(&other) {
-            let new_range = RangeSetItem::new(other, 1);
-
-            let overlaps_right = self.inner.get(idx)
-                .map_or(false, |right_range| new_range.adjacent(right_range));
-            let overlaps_left = self.inner.get(idx - 1)
-                .map_or(false, |left_range| new_range.adjacent(left_range));
-
-            // TODO: consider mem::replace for range replacing to avoid remove and insert cost of Vec.
-            let (insert_idx, insert_range) = match (overlaps_left, overlaps_right) {
-                (true, true) => {
-                    let right_range = self.inner.remove(idx);
-                    let left_range = self.inner.remove(idx - 1);
-                    (idx - 1, left_range.merge(new_range).merge(right_range))
-                },
-                (true, false) => {
-                    let left_range = self.inner.remove(idx - 1);
-                    (idx - 1, left_range.merge(new_range))
-                },
-                (false, true) => {
-                    let right_range = self.inner.remove(idx);
-                    (idx, right_range.merge(new_range))
-                },
-                (false, false) => (idx, new_range)
-            };
-
-            self.inner.insert(insert_idx, insert_range);
-            true
-        } else {
-            false
+        TraceState{
+            a: RangeSet::new(),
+            x: RangeSet::new(),
+            y: RangeSet::new(),
         }
     }
 }
-
 
 pub struct TraceContext {
     read_range: RangeSet<u16>,
     write_range: RangeSet<u16>,
+    state: TraceState,
+    program: ProgramTree,
+}
+impl TraceContext {
+    pub fn new() -> Self {
+        TraceContext {
+            read_range: RangeSet::new(),
+            write_range: RangeSet::new(),
+            state: TraceState::new(),
+            program: ProgramTree::new()
+        }
+    }
+
+    pub fn add_write_address(&mut self, addr: u16) -> bool {
+        self.write_range.insert_unit(addr)   
+    }
+    pub fn add_read_address(&mut self, addr: u16) -> bool {
+        if self.write_range.contains(&addr) {
+            println!("WARN: read from ${:04x} without initializing it", addr);
+        }
+        self.read_range.insert_unit(addr)   
+    }
+}
+
+
+
+#[derive(Debug, Error)]
+pub enum TraceError {
+    #[error(transparent)]
+    Parse(#[from] BinError)
+}
+
+pub struct OperationNode {
+    address: u16,
+    operation: Opcode,
+    next: Vec<u16>
+}
+pub type ProgramTree = BTreeMap<u16, OperationNode>;
+
+pub fn trace_program(prgrom: Vec<u8>) -> Result<ProgramTree, TraceError> {
+    let mut cursor = Cursor::new(prgrom);
+
+    let mut ctx = TraceContext::new();
+
+    let mut to_trace = vec![PRGROM_OFFSET];
+
+    while let Some(addr) = to_trace.pop() {
+        // Already parsed, skip
+        if ctx.program.contains_key(&addr) { continue; }
+
+        cursor.set_position((addr - PRGROM_OFFSET) as u64);
+        let op = Opcode::read_options(&mut cursor, Endian::Little, ())?;
+        let next_addrs = op.next_address(addr);
+
+        for next_addr in next_addrs.iter() {
+            if next_addr < &PRGROM_OFFSET {
+                println!("WARN: cannot trace address {:04x}", next_addr);
+                continue;
+            }
+
+            if !ctx.program.contains_key(next_addr) && !to_trace.contains(next_addr) {
+                to_trace.push(*next_addr);
+            }
+        }
+
+        let node = OperationNode {
+            address: addr,
+            operation: op,
+            next: next_addrs
+        };
+        ctx.program.insert(addr, node);
+    }
+    
+    Ok(ctx.program)
+}
+
+
+
+pub fn program_to_source_string(prgtree: ProgramTree) -> String {
+    let mut next_addr = PRGROM_OFFSET;
+    prgtree.iter()
+        .map(|(addr, node)| {
+            let expected_addr = next_addr;
+            next_addr = addr + node.operation.size() as u16;
+            if addr == &expected_addr {
+                format!("${:04x}    {}", addr, node.operation.to_source_string())
+            } else {
+                format!("...\n${:04x}    {}", addr, node.operation.to_source_string())
+            }
+        })
+        .collect::<Vec<String>>()
+        .join("\n")
 }
