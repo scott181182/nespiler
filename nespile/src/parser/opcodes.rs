@@ -2,7 +2,7 @@ use binrw::BinRead;
 
 use nespile_macros::{parse_byte_with, OpcodeArgs, VariantNames};
 
-use crate::parser::address_mode::*;
+use crate::{parser::address_mode::*, tracer::TraceContext};
 
 
 
@@ -205,11 +205,49 @@ pub enum Opcode {
 
 
 impl Opcode {
+    pub fn size(&self) -> usize {
+        1 + self.argument().map_or(0, |arg| arg.size())
+    }
     pub fn to_source_string(&self) -> String {
         if let Some(addr_mode) = self.argument() {
-            format!("{:?}   {}", self.variant_name(), addr_mode)
+            format!("{}   {}", self.variant_name(), addr_mode)
         } else {
-            format!("{:?}", self.variant_name())
+            format!("{}", self.variant_name())
+        }
+    }
+
+
+
+    pub fn next_address(&self, addr: u16) -> Vec<u16> {
+        let next = addr + (self.size() as u16);
+        match self {
+            Opcode::BCC(AddrModeRelative::Relative(rel)) |
+            Opcode::BCS(AddrModeRelative::Relative(rel)) |
+            Opcode::BEQ(AddrModeRelative::Relative(rel)) |
+            Opcode::BMI(AddrModeRelative::Relative(rel)) |
+            Opcode::BNE(AddrModeRelative::Relative(rel)) |
+            Opcode::BPL(AddrModeRelative::Relative(rel)) |
+            Opcode::BVC(AddrModeRelative::Relative(rel)) |
+            Opcode::BVS(AddrModeRelative::Relative(rel)) =>
+                vec![next, (addr as i16 + (*rel as i16)) as u16],
+
+            // Unconditional jump.
+            Opcode::JMP(AddrModeAbsInd::Absolute(abs)) => vec![*abs],
+            Opcode::JMP(AddrModeAbsInd::Absolute(ind)) =>
+                todo!("indirect addresses"),
+            // Subroutine Jump; add subroutine address, and next instruction for return.
+            Opcode::JSR(AddrModeAbs::Absolute(abs)) =>
+                vec![next, *abs],
+
+            // We already know JSR and interrupts will get returned to, so we can ignore these.
+            Opcode::RTI => vec![],
+            Opcode::RTS => vec![],
+
+            // Program-ending opcodes.
+            Opcode::BRK | Opcode::STP =>
+                vec![],
+            // Default is next instruction.
+            _ => vec![next]
         }
     }
 }

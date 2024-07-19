@@ -2,6 +2,8 @@ use binrw::{io, BinRead};
 use nespile_macros::BinReadAddressMode;
 use subenum::subenum;
 
+use crate::emulator::context::EmulationContext;
+
 
 
 /// Address Modes per https://www.masswerk.at/6502/6502_instruction_set.html
@@ -57,7 +59,7 @@ pub enum AddressMode {
 
     /// Branch target is PC plus the signed offset byte.
     #[subenum(AddrModeRelative)]
-    Relative(u8),
+    Relative(i8),
 
     /// Zeropage (8-bit) address.
     #[subenum(AddrModeNoZeropageY, AddrModeNoZeropageYNoImm, AddrModeSimpleXAcc, AddrModeSimple, AddrModeSimpleOrImm, AddrModeSimpleX, AddrModeSimpleYImm, AddrModeSimpleXImm, AddrModeSAX, AddrModeSTX, AddrModeSTY, AddrModeLAX)]
@@ -84,6 +86,33 @@ impl AddressMode {
             &AddressMode::Absolute(_) | &AddressMode::AbsoluteX(_) |
             &AddressMode::AbsoluteY(_) | &AddressMode::Indirect(_) => 
                 2,
+        }
+    }
+
+    pub fn address_argument(&self, ctx: &dyn EmulationContext) -> Option<u16> {
+        match self {
+            AddressMode::Accumulator => Some(ctx.read_reg_a() as u16),
+            AddressMode::Absolute(addr) =>  Some(*addr),
+            AddressMode::AbsoluteX(addr) => Some(addr.wrapping_add(ctx.read_reg_x() as u16)),
+            AddressMode::AbsoluteY(addr) => Some(addr.wrapping_add(ctx.read_reg_y() as u16)),
+            AddressMode::Immediate(_) => None,
+            AddressMode::Implied => None,
+            AddressMode::Indirect(addr) => Some(ctx.read_memory_word(*addr)),
+            AddressMode::IndirectX(addr) => Some(ctx.read_memory_word(addr.wrapping_add(ctx.read_reg_x()) as u16)),
+            AddressMode::IndirectY(addr) => Some(ctx.read_memory_word(*addr as u16).wrapping_add(ctx.read_reg_y() as u16)),
+            AddressMode::Relative(rel) => Some(ctx.read_reg_pc().wrapping_add_signed(*rel as i16)),
+            AddressMode::ZeroPage(addr)  => Some(*addr as u16),
+            AddressMode::ZeroPageX(addr) => Some(addr.wrapping_add(ctx.read_reg_x()) as u16),
+            AddressMode::ZeroPageY(addr) => Some(addr.wrapping_add(ctx.read_reg_y()) as u16),
+        }
+    }
+    pub fn data_argument(&self, ctx: &dyn EmulationContext) -> Option<u8> {
+        match self {
+            AddressMode::Accumulator => Some(ctx.read_reg_a()),
+            AddressMode::Immediate(imm) => Some(*imm),
+            AddressMode::Implied => None,
+            AddressMode::Relative(_) => None,
+            am => am.address_argument(ctx).map(|addr| ctx.read_memory_byte(addr)),
         }
     }
 }

@@ -1,12 +1,13 @@
 use std::{fs::File, io::Write};
 
 use clap::{Parser, command};
-use parser::NesProgram;
+use tracer::{program_to_source_string, trace_program};
 
 
 
 mod parser;
 mod tracer;
+mod emulator;
 
 
 #[derive(Parser, Debug)]
@@ -25,15 +26,16 @@ fn main() {
 
     let rom = parser::rom::parse_rom(&args.rom_path)
         .expect("Failed to parse ROM file");
-    println!("{:?}", rom);
+    // println!("{:?}", rom);
 
-    let program = NesProgram::try_from(&rom) 
+    let program = trace_program(rom.prgrom_data) 
         .expect("Error parsing prgrom");
+
 
     if let Some(output_path) = args.output_path {
         let mut output_file = File::create(output_path)
             .expect("Failed to create output file");
-        write!(output_file, "{}\n", program.to_source_string(rom.header.prgrom_size as usize))
+        write!(output_file, "{}\n", program_to_source_string(program))
             .expect("Failed to write to output file");
     }
 }
