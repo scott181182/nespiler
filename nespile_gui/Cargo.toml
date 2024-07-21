@@ -1,0 +1,13 @@
+[package]
+name = "nespile_gui"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+nespile = { path = "../nespile" }
+clap = "4.5.9"
+slint = "1.7.0"
+bytes = "1.6.1"
+itertools = "0.13.0"

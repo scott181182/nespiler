@@ -2,6 +2,7 @@
 
 resolver = "2"
 members = [
+    "nespile_gui",
     "nespile",
     "nespile_macros",
 ]
