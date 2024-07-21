@@ -2,4 +2,4 @@
 
 pub mod context;
 mod opcodes;
-mod memory;
+pub mod memory;

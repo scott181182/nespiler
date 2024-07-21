@@ -2,7 +2,7 @@ use binrw::BinRead;
 
 use nespile_macros::{parse_byte_with, OpcodeArgs, VariantNames};
 
-use crate::{parser::address_mode::*, tracer::TraceContext};
+use crate::parser::address_mode::*;
 
 
 

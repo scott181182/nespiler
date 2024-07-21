@@ -9,6 +9,8 @@ mod parser;
 mod tracer;
 mod emulator;
 
+use parser::rom::parse_rom;
+
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -24,7 +26,7 @@ struct Program {
 fn main() {
     let args = Program::parse();
 
-    let rom = parser::rom::parse_rom(&args.rom_path)
+    let rom = parse_rom(&args.rom_path)
         .expect("Failed to parse ROM file");
     // println!("{:?}", rom);
 
