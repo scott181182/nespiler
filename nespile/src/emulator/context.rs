@@ -1,5 +1,12 @@
-use super::memory::NesMemory;
+use std::io::{Read, Seek, SeekFrom};
 
+use binrw::{BinRead, Error as BinError};
+use bytes::Buf;
+
+
+
+use crate::parser::opcodes::Opcode;
+use super::{memory::NesMemory, opcodes::Emulate};
 
 
 
@@ -48,6 +55,11 @@ pub trait EmulationContext {
 
     fn interrupt(&mut self) -> ();
     fn return_from_interrupt(&mut self) -> ();
+
+    fn peak_instruction(&self) -> Result<Opcode, BinError>;
+    fn read_instruction(&mut self) -> Result<Opcode, BinError>;
+
+    fn step(&mut self) -> Result<(), BinError>;
 }
 
 
@@ -81,6 +93,32 @@ impl RealEmulationContext {
 
     fn stack_address(&self) -> u16 {
         Self::STACK_BOTTOM - self.cpu.sp as u16
+    }
+}
+
+impl Seek for RealEmulationContext {
+    fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+        match pos {
+            SeekFrom::Start(idx) =>
+                self.cpu.pc = idx as u16,
+            SeekFrom::End(rel) =>
+                self.cpu.pc = (0x10000i64 + rel) as u16,
+            SeekFrom::Current(rel) =>
+                self.cpu.pc = self.cpu.pc.wrapping_add_signed(rel as i16),
+        };
+        Ok(self.cpu.pc as u64)
+    }
+}
+impl Read for RealEmulationContext {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let mut idx = 0;
+        loop {
+            buf[idx] = self.read_memory_byte(self.cpu.pc);
+            self.cpu.pc += 1;
+            idx += 1;
+
+            if (idx) >= buf.len() { return Ok(idx); }
+        }
     }
 }
 impl EmulationContext for RealEmulationContext {
@@ -208,6 +246,20 @@ impl EmulationContext for RealEmulationContext {
         let pc = self.pop_stack_word();
         self.write_status(status);
         self.write_reg_pc(pc);
+    }
+
+    fn peak_instruction(&self) -> Result<Opcode, BinError> {
+        let mut instr_slice = self.memory.get_bytes(self.cpu.pc, 4);
+        Opcode::read(&mut instr_slice)
+    }
+    fn read_instruction(&mut self) -> Result<Opcode, BinError> {
+        Opcode::read(self)
+    }
+
+    fn step(&mut self) -> Result<(), BinError> {
+        let instr = self.read_instruction()?;
+        instr.emulate(self);
+        Ok(())
     }
 }
 

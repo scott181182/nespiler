@@ -1,4 +1,4 @@
-use binrw::BinRead;
+use binrw::{meta::{EndianKind, ReadEndian}, BinRead};
 
 use nespile_macros::{parse_byte_with, OpcodeArgs, VariantNames};
 
@@ -203,6 +203,10 @@ pub enum Opcode {
 }
 
 
+
+impl ReadEndian for Opcode {
+    const ENDIAN: EndianKind = EndianKind::None;
+}
 
 impl Opcode {
     pub fn size(&self) -> usize {

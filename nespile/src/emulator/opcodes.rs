@@ -91,8 +91,8 @@ impl ArithmeticResult {
     }
 
     pub fn compare(lhs: u8, rhs: u8) -> Self {
-        let res = lhs - rhs;
-        ArithmeticResult::new_with_flags(res, Some(lhs >= rhs), None)
+        let (res, overflow) = lhs.overflowing_sub(rhs);
+        ArithmeticResult::new_with_flags(res, Some(overflow), None)
     }
     pub fn decrement(lhs: u8) -> Self {
         ArithmeticResult::new(lhs.wrapping_sub(1))
