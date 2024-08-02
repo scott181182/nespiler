@@ -1,4 +1,4 @@
-use std::io::{Seek, SeekFrom, Write};
+use std::io::Write;
 use std::str::FromStr;
 
 use binrw::Error as BinError;
@@ -10,6 +10,11 @@ use crate::emulator::context::{EmulationContext, RealEmulationContext};
 use crate::emulator::memory::NesMemory;
 use crate::parser::rom::NesFile;
 use crate::utils::TrimInPlace;
+
+mod prompt;
+mod utils;
+use prompt::{PromptIntent, IntentParseError};
+use utils::print_context;
 
 
 
@@ -27,99 +32,11 @@ pub enum InteractiveError {
 
 
 
-enum PromptIntent {
-    Quit,
-    Step(usize),
-    Goto(u16),
-    PrintRange(u16, u16),
-    PrintZeroPage,
-    PrintContext,
-    None,
-}
-#[derive(Error, Debug)]
-pub enum IntentParseError {
-    #[error("Malformed range start: {0}")]
-    MalformedRangeStart(String),
-    #[error("Malformed range end: {0}")]
-    MalformedRangeEnd(String),
-    #[error("Malformed goto address: {0}")]
-    MalformedGoto(String),
-}
-impl FromStr for PromptIntent {
-    type Err = IntentParseError;
-
-    fn from_str(value: &str) -> Result<Self, IntentParseError> {
-        if value == "q" {
-            Ok(PromptIntent::Quit)
-        } else if value == "p" {
-            Ok(PromptIntent::PrintContext)
-        } else if value == "zp" {
-            Ok(PromptIntent::PrintZeroPage)  
-        } else if value.starts_with("$") {
-            if let Some((lhs, rhs)) = value.split_once(":") {
-                let start = u16::from_str_radix(&lhs[1..], 16)
-                    .map_err(|_err| IntentParseError::MalformedRangeStart(lhs.to_string()))?;
-
-                let end = if rhs.starts_with("+") {
-                    start + u16::from_str_radix(&rhs[1..], 10)
-                        .map_err(|_err| IntentParseError::MalformedRangeEnd(rhs.to_string()))?
-                } else {
-                    u16::from_str_radix(&rhs, 16)
-                        .map_err(|_err| IntentParseError::MalformedRangeStart(lhs.to_string()))?
-                };
-
-                Ok(PromptIntent::PrintRange(start, end))
-            } else {
-                if let Ok(start) = u16::from_str_radix(&value[1..], 16) {
-                    Ok(PromptIntent::PrintRange(start, start + 1))
-                } else {
-                    Err(IntentParseError::MalformedRangeStart(value.to_string()))
-                }
-            }
-        } else if value.starts_with(">") {
-            let addr = u16::from_str_radix(&value[1..], 16)
-                .map_err(|_err| IntentParseError::MalformedGoto(value.to_string()))?;
-            Ok(PromptIntent::Goto(addr))
-        } else if let Ok(step) = usize::from_str(&value) {
-            Ok(PromptIntent::Step(step))
-        } else {
-            Ok(PromptIntent::None)
-        }
-    }
-}
-
-
-
 struct InteractiveSession {
     ctx: RealEmulationContext,
     input_buffer: String,
 }
 
-fn print_context(ctx: &RealEmulationContext) {
-    let a = ctx.read_reg_a();
-    let x = ctx.read_reg_x();
-    let y = ctx.read_reg_y();
-    let sp = ctx.read_reg_sp();
-    let pc = ctx.read_reg_pc();
-
-    let flags = ctx.read_status();
-
-    let instr = ctx.peak_instruction();
-    let instr_str = instr.map_or("None".to_string(), |op| {
-        let memstr = (0..op.size())
-            .map(|idx| ctx.read_memory_byte(ctx.read_reg_pc() + idx as u16))
-            .map(|byte| format!("{:02x}", byte))
-            .collect::<Vec<String>>()
-            .join("");
-
-        format!("{}  {:?}", memstr, op)
-    });
-
-    println!("");
-    println!("Registers:  a:{:02x}  x:{:02x}  y:{:02x}    sp:{:02x}  pc:{:02x}", a, x, y, sp, pc);
-    println!("Flags:      {:08b}", flags);
-    println!("Next Instr: {}", instr_str);
-}
 
 
 
