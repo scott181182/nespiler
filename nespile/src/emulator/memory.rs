@@ -53,10 +53,9 @@ impl NesMemory {
         self.write_byte_at(address + 1, (value >> 8) as u8);
     }
 
-    pub fn get_bytes(&self, address: u16, len: u16) -> Cursor<Bytes> {
-        let slice = (address..(address + len))
+    pub fn get_bytes(&self, address: u16, len: u16) -> Bytes {
+        (address..(address + len))
             .map(|addr| self.read_byte_at(addr))
-            .collect::<Bytes>();
-        Cursor::new(slice)
+            .collect::<Bytes>()
     }
 }

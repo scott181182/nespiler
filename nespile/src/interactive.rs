@@ -32,6 +32,8 @@ enum PromptIntent {
     Step(usize),
     Goto(u16),
     PrintRange(u16, u16),
+    PrintZeroPage,
+    PrintContext,
     None,
 }
 #[derive(Error, Debug)]
@@ -49,6 +51,10 @@ impl FromStr for PromptIntent {
     fn from_str(value: &str) -> Result<Self, IntentParseError> {
         if value == "q" {
             Ok(PromptIntent::Quit)
+        } else if value == "p" {
+            Ok(PromptIntent::PrintContext)
+        } else if value == "zp" {
+            Ok(PromptIntent::PrintZeroPage)  
         } else if value.starts_with("$") {
             if let Some((lhs, rhs)) = value.split_once(":") {
                 let start = u16::from_str_radix(&lhs[1..], 16)
@@ -115,6 +121,8 @@ fn print_context(ctx: &RealEmulationContext) {
     println!("Next Instr: {}", instr_str);
 }
 
+
+
 impl InteractiveSession {
     pub fn new(rom: NesFile) -> Self {
         let memory = NesMemory::new(rom.prgrom_data.into());
@@ -127,33 +135,33 @@ impl InteractiveSession {
     }
 
     pub fn start(mut self) -> Result<(), InteractiveError> {
-        loop {
-            print_context(&self.ctx);
+        print_context(&self.ctx);
 
+        loop {
             let input = self.prompt_input()?;
 
             match input {
                 PromptIntent::Quit => return Ok(()),
+                PromptIntent::PrintContext => print_context(&self.ctx),
                 PromptIntent::Step(step_size) => {
                     for _ in 0..step_size {
                         self.ctx.step()?
                     }
+                    print_context(&self.ctx);
                 },
                 PromptIntent::Goto(pc) => {
                     while self.ctx.read_reg_pc() != pc {
                         self.ctx.step()?;
                     }
+                    print_context(&self.ctx);
                 },
-                PromptIntent::PrintRange(start, end) => {
-                    let range_str = (start..end)
-                        .map(|addr| self.ctx.read_memory_byte(addr))
-                        .map(|byte| format!("{:02x}", byte))
-                        .collect::<Vec<String>>()
-                        .join(" ");
-                    println!("${:04x}-{:04x}: {}", start, end, range_str);
-                },
+                PromptIntent::PrintRange(start, end) =>
+                    self.print_memory_block(start, end),
+                PromptIntent::PrintZeroPage =>
+                    self.print_memory_block(0, 0x100),
                 PromptIntent::None => {
                     self.ctx.step()?;
+                    print_context(&self.ctx);
                 },
             }
         }
@@ -170,6 +178,40 @@ impl InteractiveSession {
         self.input_buffer.trim_in_place();
 
         Ok(PromptIntent::from_str(self.input_buffer.as_ref())?)
+    }
+
+    fn print_memory_block(&self, start: u16, end: u16) {
+        const LINE_SIZE: u16 = 16;
+        let aligned_start = start & !(LINE_SIZE - 1);
+        let aligned_length = end - aligned_start;
+        let total_lines = (aligned_length as f32 / LINE_SIZE as f32).ceil() as u16;
+
+        let data_block = (0..total_lines)
+            .map(|line_no| {
+                let addr = aligned_start + line_no * LINE_SIZE;
+
+                let line_text = (addr..(addr + LINE_SIZE))
+                    .map(|a| {
+                        if a < start || a >= end {
+                            "  ".to_string()
+                        } else {
+                            format!("{:02x}", self.ctx.read_memory_byte(a))
+                        }
+                    })
+                    .collect::<Vec<String>>()
+                    .join(" ");
+
+                format!("${:04x} {}", addr, line_text)
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        let header = (0..LINE_SIZE)
+            .map(|idx| format!("{:02x}", idx))
+            .collect::<Vec<String>>()
+            .join(" ");
+
+        println!("      {}\n{}", header, data_block);
     }
 }
 

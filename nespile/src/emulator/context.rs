@@ -1,4 +1,4 @@
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Cursor, Read, Seek, SeekFrom};
 
 use binrw::{BinRead, Error as BinError};
 use bytes::Buf;
@@ -249,8 +249,10 @@ impl EmulationContext for RealEmulationContext {
     }
 
     fn peak_instruction(&self) -> Result<Opcode, BinError> {
-        let mut instr_slice = self.memory.get_bytes(self.cpu.pc, 4);
-        Opcode::read(&mut instr_slice)
+        // TODO: do better
+        let bytes = self.memory.get_bytes(self.cpu.pc, 4);
+        let mut cursor = Cursor::new(bytes);
+        Opcode::read(&mut cursor)
     }
     fn read_instruction(&mut self) -> Result<Opcode, BinError> {
         Opcode::read(self)
