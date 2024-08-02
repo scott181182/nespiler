@@ -1,4 +1,5 @@
 /target
+/ref
 
 *.asm
 *.nes
