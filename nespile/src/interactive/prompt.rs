@@ -6,6 +6,7 @@ use thiserror::Error;
 
 pub enum PromptIntent {
     Quit,
+    Run,
     Step(usize),
     Goto(u16),
     PrintRange(u16, u16),
@@ -29,6 +30,8 @@ impl FromStr for PromptIntent {
     fn from_str(value: &str) -> Result<Self, IntentParseError> {
         if value == "q" {
             Ok(PromptIntent::Quit)
+        } else if value == "r" {
+            Ok(PromptIntent::Run)
         } else if value == "p" {
             Ok(PromptIntent::PrintContext)
         } else if value == "zp" {

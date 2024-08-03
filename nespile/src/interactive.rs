@@ -59,6 +59,10 @@ impl InteractiveSession {
 
             match input {
                 PromptIntent::Quit => return Ok(()),
+                PromptIntent::Run => {
+                    // Run until something unexpected happens.
+                    loop { self.ctx.step()?; }
+                }
                 PromptIntent::PrintContext => print_context(&self.ctx),
                 PromptIntent::Step(step_size) => {
                     for _ in 0..step_size {
