@@ -82,8 +82,8 @@ fn main() {
     main_window.global::<NesState>().set_rom_path(args.rom_path.into());
     main_window.global::<NesState>().set_cpu_state((&emulator).into());
 
-    main_window.global::<NesState>().set_zeropage(bytes_to_sector(&emulator.memory.zeropage, 8, 0));
-    main_window.global::<NesState>().set_stack(bytes_to_sector(&emulator.memory.stack, 8, 0x100));
+    main_window.global::<NesState>().set_zeropage(bytes_to_sector(&emulator.memory.get_bytes(0, 0x100), 8, 0));
+    main_window.global::<NesState>().set_stack(bytes_to_sector(&emulator.memory.get_bytes(0x100, 0x200), 8, 0x100));
 
     main_window.run().expect("Error running main window");
 }
